@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Blackout</string>
+    <string name="accessibility_description">Draws the black screen cover above all apps and can lock the screen. It does not read screen content.</string>
+</resources>
