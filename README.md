@@ -19,3 +19,11 @@ A sideloaded APK needs Settings > Apps > Blackout > menu > "Allow restricted set
 ## Escape hatch
 
 The cover has no timeout. If it ever sticks and the fingerprint fails, from a PC run `adb shell pm clear com.dhruv.blackout` (clears the saved armed state and kills the app). Do not use `settings put secure enabled_accessibility_services ""`: it disables your other accessibility services and the cover returns when Blackout is re-enabled.
+
+## Overnight check
+While armed the service writes a heartbeat every 5 min (battery, plugged, screen on, cover up) plus arm/disarm/watchdog events:
+
+    adb shell run-as com.dhruv.blackout cat files/health.log
+
+## Screenshots without a device
+`.\gradlew.bat :app:recordPaparazziDebug` renders the setup screen, cover and widget to `app/src/test/snapshots/images/`.
