@@ -14,6 +14,9 @@ import android.media.AudioPlaybackConfiguration
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -48,7 +51,10 @@ class BlackoutService : AccessibilityService() {
     private var suspended = false
     private var armedAt = 0L
     private var audioMode = AudioManager.MODE_NORMAL
-    private var loudPlaying = false
+    private var alarmPlaying = false
+    private var ringPlaying = false
+    private var banner: TextView? = null
+    private val ringing get() = audioMode == AudioManager.MODE_RINGTONE || ringPlaying
 
     private val armed get() = Blackout.isArmed(this)
 
@@ -67,14 +73,17 @@ class BlackoutService : AccessibilityService() {
         }
     }
 
-    private fun anyLoud(configs: List<AudioPlaybackConfiguration>) = configs.any {
-        val u = it.audioAttributes.usage
-        u == AudioAttributes.USAGE_ALARM || u == AudioAttributes.USAGE_NOTIFICATION_RINGTONE
+    private fun anyUsage(configs: List<AudioPlaybackConfiguration>, usage: Int) =
+        configs.any { it.audioAttributes.usage == usage }
+
+    private fun readPlayback(configs: List<AudioPlaybackConfiguration>) {
+        alarmPlaying = anyUsage(configs, AudioAttributes.USAGE_ALARM)
+        ringPlaying = anyUsage(configs, AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
     }
 
     private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
-            loudPlaying = anyLoud(configs)
+            readPlayback(configs)
             evaluateYield()
         }
     }
@@ -82,7 +91,7 @@ class BlackoutService : AccessibilityService() {
     /** The change callbacks only fire on transitions, so read the current audio state explicitly. */
     private fun seedAudioState() {
         audioMode = audio.mode
-        loudPlaying = anyLoud(audio.activePlaybackConfigurations)
+        readPlayback(audio.activePlaybackConfigurations)
     }
 
     // The unlocked-device cover is dropped so the real keyguard can take the unlock.
@@ -192,10 +201,29 @@ class BlackoutService : AccessibilityService() {
         }
     }
 
+    /**
+     * Incoming calls never drop the cover (anyone can phone the device): a banner is drawn on it
+     * instead and answering needs the normal unlock. Only alarms, which can't be triggered
+     * remotely, step the cover aside.
+     */
+    private fun updateBanner() {
+        val b = banner ?: return
+        if (ringing && cover != null) {
+            val dm = resources.displayMetrics
+            b.translationX = Random.nextInt(-dm.widthPixels / 12, dm.widthPixels / 12).toFloat()
+            b.translationY = Random.nextInt(-dm.heightPixels / 10, dm.heightPixels / 10).toFloat()
+            b.visibility = View.VISIBLE
+            setBrightness(0.35f)
+        } else if (b.visibility == View.VISIBLE) {
+            b.visibility = View.GONE
+            setBrightness(if (peek?.visibility == View.VISIBLE) 0.15f else 0f)
+        }
+    }
+
     private fun evaluateYield() {
         if (!armed) return
-        val shouldYield = loudPlaying ||
-            audioMode == AudioManager.MODE_RINGTONE || audioMode == AudioManager.MODE_IN_CALL
+        updateBanner()
+        val shouldYield = alarmPlaying
         if (shouldYield) {
             handler.removeCallbacks(resumeCover)
             if (!suspended) {
@@ -230,6 +258,26 @@ class BlackoutService : AccessibilityService() {
                 Gravity.TOP or Gravity.START
             )
         )
+        banner = TextView(this).apply {
+            val line1 = "Incoming call"
+            val line2 = "\nTap to unlock and answer"
+            text = SpannableString(line1 + line2).apply {
+                setSpan(RelativeSizeSpan(0.55f), line1.length, length, 0)
+                setSpan(ForegroundColorSpan(Color.rgb(170, 170, 170)), line1.length, length, 0)
+            }
+            setTextColor(Color.WHITE)
+            textSize = 32f
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+        root.addView(
+            banner,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        )
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -260,6 +308,7 @@ class BlackoutService : AccessibilityService() {
         coverParams = params
         armedAt = System.currentTimeMillis()
         root.post { root.windowInsetsController?.let(::hideBars) }
+        updateBanner()
         Log.i(TAG, "cover shown")
     }
 
@@ -270,6 +319,7 @@ class BlackoutService : AccessibilityService() {
         cover = null
         coverParams = null
         peek = null
+        banner = null
         removing = false
         Log.i(TAG, "cover hidden")
     }
@@ -303,7 +353,7 @@ class BlackoutService : AccessibilityService() {
             status == BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
             plugged -> "plugged in, not charging"
             else -> "on battery"
-        }
+        } + if (audioMode == AudioManager.MODE_IN_CALL) " · on a call" else ""
         val now = Date()
         tv.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now) + "\n" +
             SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(now) + "\n$level% · $state"
@@ -321,7 +371,7 @@ class BlackoutService : AccessibilityService() {
 
     private val endPeek = Runnable {
         peek?.visibility = View.GONE
-        setBrightness(0f)
+        setBrightness(if (banner?.visibility == View.VISIBLE) 0.35f else 0f)
     }
 
     private fun setBrightness(b: Float) {
