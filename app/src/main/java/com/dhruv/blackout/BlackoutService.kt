@@ -58,20 +58,48 @@ class BlackoutService : AccessibilityService() {
             Log.i(TAG, "${intent.action} deviceLocked=${km.isDeviceLocked} armed=$armed cover=${cover != null}")
             when (intent.action) {
                 // The system itself just authenticated the user: always exit.
-                Intent.ACTION_USER_PRESENT -> if (armed) disarm("user present")
+                // USER_PRESENT also fires when the keyguard is skipped (lock-delay, Smart Lock),
+                // so only honour it after we deliberately revealed the keyguard.
+                Intent.ACTION_USER_PRESENT -> if (armed && revealed) disarm("keyguard unlocked after reveal")
                 // Power button off/on must not drop the cover; make sure it is still there.
                 Intent.ACTION_SCREEN_ON -> if (armed && !suspended && cover == null) showCover()
             }
         }
     }
 
+    private fun anyLoud(configs: List<AudioPlaybackConfiguration>) = configs.any {
+        val u = it.audioAttributes.usage
+        u == AudioAttributes.USAGE_ALARM || u == AudioAttributes.USAGE_NOTIFICATION_RINGTONE
+    }
+
     private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
-            loudPlaying = configs.any {
-                val u = it.audioAttributes.usage
-                u == AudioAttributes.USAGE_ALARM || u == AudioAttributes.USAGE_NOTIFICATION_RINGTONE
-            }
+            loudPlaying = anyLoud(configs)
             evaluateYield()
+        }
+    }
+
+    /** The change callbacks only fire on transitions, so read the current audio state explicitly. */
+    private fun seedAudioState() {
+        audioMode = audio.mode
+        loudPlaying = anyLoud(audio.activePlaybackConfigurations)
+    }
+
+    // The unlocked-device cover is dropped so the real keyguard can take the unlock.
+    private var revealed = false
+
+    private val reraiseAfterReveal = Runnable {
+        revealed = false
+        if (armed && !suspended) showCover()
+        Log.i(TAG, "reveal timed out, cover back")
+    }
+
+    // Cap on how long an alarm/ringtone/call may hold the cover down (stale players).
+    private val maxSuspend = Runnable {
+        if (suspended) {
+            Log.w(TAG, "yield exceeded cap, forcing cover back")
+            suspended = false
+            if (armed) showCover()
         }
     }
 
@@ -102,6 +130,7 @@ class BlackoutService : AccessibilityService() {
         audio.registerAudioPlaybackCallback(playbackCallback, handler)
         audio.addOnModeChangedListener(ContextCompat.getMainExecutor(this), modeListener)
         Log.i(TAG, "service connected, armed=$armed")
+        seedAudioState()
         // Watchdog: process death or rebind while armed puts the cover straight back.
         if (armed) showCover()
     }
@@ -135,7 +164,9 @@ class BlackoutService : AccessibilityService() {
         if (armed && cover != null) return
         Blackout.setArmed(this, true)
         suspended = false
-        applyAlarmFloor()
+        revealed = false
+        seedAudioState()
+        runCatching { applyAlarmFloor() }.onFailure { Log.w(TAG, "alarm floor failed", it) }
         if (dismissShade) {
             performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
             handler.postDelayed({ if (armed) showCover() }, 300)
@@ -149,9 +180,12 @@ class BlackoutService : AccessibilityService() {
         Log.i(TAG, "disarm: $reason")
         Blackout.setArmed(this, false)
         suspended = false
+        revealed = false
         handler.removeCallbacks(resumeCover)
+        handler.removeCallbacks(maxSuspend)
+        handler.removeCallbacks(reraiseAfterReveal)
         removeCover()
-        restoreAlarmVolume()
+        runCatching { restoreAlarmVolume() }
         val failed = Blackout.takeFailures(this)
         if (failed > 0) {
             Toast.makeText(this, "$failed failed unlock attempt(s) while Blackout was on", Toast.LENGTH_LONG).show()
@@ -166,6 +200,7 @@ class BlackoutService : AccessibilityService() {
             handler.removeCallbacks(resumeCover)
             if (!suspended) {
                 suspended = true
+                handler.postDelayed(maxSuspend, 3 * 60_000L)
                 removeCover()
                 Log.i(TAG, "yield: alarm/ring/call active, cover suspended")
             }
@@ -176,7 +211,7 @@ class BlackoutService : AccessibilityService() {
     }
 
     private fun showCover() {
-        if (cover != null) return
+        if (cover != null || revealed) return
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             isClickable = true
@@ -242,6 +277,17 @@ class BlackoutService : AccessibilityService() {
     private fun onCoverTapped() {
         // Guard against the tap that armed us (tile/widget) landing on the fresh cover.
         if (System.currentTimeMillis() - armedAt < 500) return
+        val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        if (km.isDeviceLocked) {
+            // Real keyguard is up (power button); AuthActivity cannot show over it, and the
+            // keyguard is itself the security boundary, so reveal it and re-cover if unused.
+            Log.i(TAG, "tap while device locked: revealing keyguard for 8 s")
+            revealed = true
+            removeCover()
+            handler.removeCallbacks(reraiseAfterReveal)
+            handler.postDelayed(reraiseAfterReveal, 8000)
+            return
+        }
         showPeek()
         startActivity(Intent(this, AuthActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }

@@ -1,4 +1,4 @@
-﻿# Blackout
+# Blackout
 
 Personal, ad-free OLED black-screen app for a OnePlus 13R. No internet permission, no data collection.
 
@@ -18,5 +18,4 @@ A sideloaded APK needs Settings > Apps > Blackout > menu > "Allow restricted set
 
 ## Escape hatch
 
-The cover has no timeout. If it ever sticks and the fingerprint fails, from a PC: `adb shell settings put secure enabled_accessibility_services ""` (turns the service off, removing the cover).
-
+The cover has no timeout. If it ever sticks and the fingerprint fails, from a PC run `adb shell pm clear com.dhruv.blackout` (clears the saved armed state and kills the app). Do not use `settings put secure enabled_accessibility_services ""`: it disables your other accessibility services and the cover returns when Blackout is re-enabled.

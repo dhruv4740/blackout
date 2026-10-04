@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.dhruv.blackout"
-        minSdk = 33
+        minSdk = 34
         targetSdk = 36
         versionCode = 1
         versionName = "0.0.1-spike"
