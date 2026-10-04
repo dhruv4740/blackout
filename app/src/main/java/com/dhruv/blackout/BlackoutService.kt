@@ -1,4 +1,4 @@
-package com.dhruv.blackout
+﻿package com.dhruv.blackout
 
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
@@ -245,7 +245,9 @@ class BlackoutService : AccessibilityService() {
             isClickable = true
             setOnClickListener { onCoverTapped() }
         }
-        peek = CoverUi.peekText(this)
+        peek = CoverUi.peekText(this).apply {
+            unlock.setOnClickListener { launchAuth() }
+        }
         root.addView(
             peek,
             FrameLayout.LayoutParams(
@@ -323,6 +325,10 @@ class BlackoutService : AccessibilityService() {
             handler.postDelayed(reraiseAfterReveal, 8000)
             return
         }
+        launchAuth()
+    }
+
+    private fun launchAuth() {
         showPeek()
         startActivity(Intent(this, AuthActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
@@ -338,22 +344,24 @@ class BlackoutService : AccessibilityService() {
             status == BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
             plugged -> "plugged in, not charging"
             else -> "on battery"
-        } + if (audioMode == AudioManager.MODE_IN_CALL) " · on a call" else ""
+        } + if (audioMode == AudioManager.MODE_IN_CALL) " Â· on a call" else ""
         val now = Date()
         tv.bind(
             SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
             SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(now),
-            "$level% · $state"
+            "$level% Â· $state"
         )
         val dm = resources.displayMetrics
         val lp = tv.layoutParams as FrameLayout.LayoutParams
+        // Fixed width: wrap_content measured the clock one glyph short on the device.
+        lp.width = (240 * dm.density).toInt()
         lp.leftMargin = Random.nextInt(dm.widthPixels / 12, dm.widthPixels / 3)
         lp.topMargin = Random.nextInt(dm.heightPixels / 12, dm.heightPixels / 4)
         tv.layoutParams = lp
         tv.visibility = View.VISIBLE
         setBrightness(0.15f)
         handler.removeCallbacks(endPeek)
-        handler.postDelayed(endPeek, 6000)
+        handler.postDelayed(endPeek, 12000)
         Log.i(TAG, "peek shown")
     }
 

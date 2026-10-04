@@ -54,14 +54,29 @@ object CoverUi {
             setPadding(0, ctx.dp(6), 0, 0)
         }
 
+        /** Visible way back in if the fingerprint prompt was dismissed or never appeared. */
+        val unlock = TextView(ctx).apply {
+            text = "Unlock"
+            setTextColor(Color.rgb(170, 170, 170)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            gravity = Gravity.CENTER
+            setPadding(ctx.dp(28), ctx.dp(12), ctx.dp(28), ctx.dp(12))
+            background = ctx.rounded(Color.BLACK, 24, Color.rgb(90, 90, 90))
+        }
+
         init {
             orientation = VERTICAL
             visibility = GONE
             addView(time); addView(date); addView(status)
+            addView(unlock, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = ctx.dp(20)
+            })
         }
 
         fun bind(t: String, d: String, s: String) {
             time.text = t; date.text = d; status.text = s
+            // Reserve the widest clock so a stale measure can never clip the last digit.
+            time.minWidth = time.paint.measureText("88:88").toInt() + context.dp(8)
+            requestLayout()
         }
     }
 
