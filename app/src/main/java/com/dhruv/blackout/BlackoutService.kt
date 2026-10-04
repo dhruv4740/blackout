@@ -46,7 +46,7 @@ class BlackoutService : AccessibilityService() {
     private lateinit var audio: AudioManager
     private var cover: FrameLayout? = null
     private var coverParams: WindowManager.LayoutParams? = null
-    private var peek: TextView? = null
+    private var peek: CoverUi.Peek? = null
     private var removing = false
     private var suspended = false
     private var armedAt = 0L
@@ -245,11 +245,7 @@ class BlackoutService : AccessibilityService() {
             isClickable = true
             setOnClickListener { onCoverTapped() }
         }
-        peek = TextView(this).apply {
-            setTextColor(Color.rgb(110, 110, 110))
-            textSize = 15f
-            visibility = View.GONE
-        }
+        peek = CoverUi.peekText(this)
         root.addView(
             peek,
             FrameLayout.LayoutParams(
@@ -258,18 +254,7 @@ class BlackoutService : AccessibilityService() {
                 Gravity.TOP or Gravity.START
             )
         )
-        banner = TextView(this).apply {
-            val line1 = "Incoming call"
-            val line2 = "\nTap to unlock and answer"
-            text = SpannableString(line1 + line2).apply {
-                setSpan(RelativeSizeSpan(0.55f), line1.length, length, 0)
-                setSpan(ForegroundColorSpan(Color.rgb(170, 170, 170)), line1.length, length, 0)
-            }
-            setTextColor(Color.WHITE)
-            textSize = 32f
-            gravity = Gravity.CENTER
-            visibility = View.GONE
-        }
+        banner = CoverUi.banner(this)
         root.addView(
             banner,
             FrameLayout.LayoutParams(
@@ -355,8 +340,11 @@ class BlackoutService : AccessibilityService() {
             else -> "on battery"
         } + if (audioMode == AudioManager.MODE_IN_CALL) " · on a call" else ""
         val now = Date()
-        tv.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now) + "\n" +
-            SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(now) + "\n$level% · $state"
+        tv.bind(
+            SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
+            SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(now),
+            "$level% · $state"
+        )
         val dm = resources.displayMetrics
         val lp = tv.layoutParams as FrameLayout.LayoutParams
         lp.leftMargin = Random.nextInt(dm.widthPixels / 12, dm.widthPixels / 3)

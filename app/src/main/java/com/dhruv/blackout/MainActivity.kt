@@ -8,48 +8,10 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
-/** Setup + health checklist, manual start button, and the Locked-mode experiment. */
+/** Setup + health checklist and manual start. The look lives in [SetupScreen]. */
 class MainActivity : AppCompatActivity() {
-
-    private lateinit var status: TextView
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        status = TextView(this).apply { textSize = 14f }
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 96, 48, 48)
-            addView(status)
-            addView(button("Start black screen") {
-                BlackoutService.instance?.arm() ?: startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            })
-            addView(button("1. App info (Allow restricted settings)") {
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-            })
-            addView(button("2. Accessibility settings (turn Blackout on)") {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            })
-            addView(button("3. Exempt from battery optimization") {
-                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
-            })
-            addView(CheckBox(this@MainActivity).apply {
-                text = "While on, keep alarm volume at 80% or higher"
-                isChecked = Blackout.alarmFloor(this@MainActivity)
-                setOnCheckedChangeListener { _, v -> Blackout.setAlarmFloor(this@MainActivity, v) }
-            })
-            addView(button("Test: Locked mode (lock + black screen)") {
-                BlackoutService.instance?.lockAndBlack()
-            })
-        }
-        setContentView(ScrollView(this).apply { addView(col) })
-    }
 
     override fun onResume() {
         super.onResume()
@@ -58,28 +20,44 @@ class MainActivity : AppCompatActivity() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         fun vol(s: Int) = "${am.getStreamVolume(s)}/${am.getStreamMaxVolume(s)}"
-        fun ok(b: Boolean) = if (b) "OK" else "FIX"
+        fun open(a: String, pkg: Boolean = false) = {
+            startActivity(Intent(a).apply { if (pkg) data = Uri.parse("package:$packageName") })
+        }
         val ringer = when (am.ringerMode) {
-            AudioManager.RINGER_MODE_NORMAL -> "normal"
-            AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
-            else -> "silent"
+            AudioManager.RINGER_MODE_NORMAL -> "Normal"
+            AudioManager.RINGER_MODE_VIBRATE -> "Vibrate only"
+            else -> "Silent"
         }
-        status.text = listOf(
-            "[${ok(BlackoutService.instance != null)}] Accessibility service connected",
-            "[${ok(km.isDeviceSecure)}] Screen lock set (needed to unlock)",
-            "[${ok(pm.isIgnoringBatteryOptimizations(packageName))}] Battery optimization exempt",
-            "[${ok(am.ringerMode == AudioManager.RINGER_MODE_NORMAL)}] Ringer mode: $ringer",
-            "[${ok(nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL)}] Do Not Disturb off",
-            "Alarm volume ${vol(AudioManager.STREAM_ALARM)}, ring volume ${vol(AudioManager.STREAM_RING)}",
-            "Blackout is " + if (Blackout.isArmed(this)) "ON" else "off",
-            "Logcat: adb logcat -s BlackoutSpike"
-        ).joinToString("\n")
+        val state = SetupState(
+            armed = Blackout.isArmed(this),
+            rows = listOf(
+                CheckRow(BlackoutService.instance != null, "Accessibility service",
+                    if (BlackoutService.instance != null) "Connected" else "Turn Blackout on in Accessibility",
+                    open(Settings.ACTION_ACCESSIBILITY_SETTINGS)),
+                CheckRow(km.isDeviceSecure, "Screen lock",
+                    if (km.isDeviceSecure) "Set" else "Set a PIN or fingerprint first"),
+                CheckRow(pm.isIgnoringBatteryOptimizations(packageName), "Battery optimization",
+                    if (pm.isIgnoringBatteryOptimizations(packageName)) "Exempt" else "Exempt Blackout so it isn't stopped overnight",
+                    open(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg = true)),
+                CheckRow(am.ringerMode == AudioManager.RINGER_MODE_NORMAL, "Ringer", ringer),
+                CheckRow(nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL,
+                    "Do Not Disturb",
+                    if (nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL) "Off" else "On, calls and alarms may be muted"),
+            ),
+            alarmFloor = Blackout.alarmFloor(this),
+            alarmVolume = vol(AudioManager.STREAM_ALARM),
+            ringVolume = vol(AudioManager.STREAM_RING),
+        )
+        setContentView(
+            SetupScreen.build(
+                this, state,
+                onStart = {
+                    BlackoutService.instance?.arm() ?: startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                },
+                onAlarmFloor = { Blackout.setAlarmFloor(this, it) },
+                onLockedTest = { BlackoutService.instance?.lockAndBlack() },
+                onSideloadHelp = open(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg = true),
+            )
+        )
     }
-
-    private fun button(label: String, onClick: () -> Unit) =
-        Button(this).apply {
-            text = label
-            isAllCaps = false
-            setOnClickListener { onClick() }
-        }
 }
