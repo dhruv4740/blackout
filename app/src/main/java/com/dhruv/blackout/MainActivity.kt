@@ -2,19 +2,73 @@ package com.dhruv.blackout
 
 import android.app.KeyguardManager
 import android.app.NotificationManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.SharedPreferences
+import android.database.ContentObserver
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.ScrollView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 
 /** Setup + health checklist and manual start. The look lives in [SetupScreen]. */
 class MainActivity : AppCompatActivity() {
 
+    private val handler = Handler(Looper.getMainLooper())
+    private val render = Runnable { render() }
+
+    /** Coalesces bursts (e.g. holding a volume key) into one redraw. */
+    private val refresh = {
+        handler.removeCallbacks(render)
+        handler.postDelayed(render, 150)
+    }
+
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) { refresh() }
+    }
+
+    private val a11yObserver = object : ContentObserver(handler) {
+        // The service binds a moment after the setting flips.
+        override fun onChange(selfChange: Boolean) {
+            handler.removeCallbacks(render)
+            handler.postDelayed(render, 800)
+        }
+    }
+
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> refresh() }
+
     override fun onResume() {
         super.onResume()
+        render()
+        val filter = IntentFilter().apply {
+            addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
+            addAction("android.media.VOLUME_CHANGED_ACTION")
+            addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
+        }
+        ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), false, a11yObserver
+        )
+        getSharedPreferences("blackout", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(prefsListener)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(render)
+        runCatching { unregisterReceiver(receiver) }
+        contentResolver.unregisterContentObserver(a11yObserver)
+        getSharedPreferences("blackout", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(prefsListener)
+    }
+
+    private fun render() {
         val am = getSystemService(AUDIO_SERVICE) as AudioManager
         val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
         val pm = getSystemService(POWER_SERVICE) as PowerManager
@@ -49,16 +103,18 @@ class MainActivity : AppCompatActivity() {
             ringVolume = vol(AudioManager.STREAM_RING),
             stats = Stats.summary(this),
         )
-        setContentView(
-            SetupScreen.build(
-                this, state,
-                onStart = {
-                    BlackoutService.instance?.arm() ?: startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                },
-                onAlarmFloor = { Blackout.setAlarmFloor(this, it) },
-                onLockedTest = { BlackoutService.instance?.lockAndBlack() },
-                onSideloadHelp = open(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg = true),
-            )
+        val scrollY = (findViewById<android.view.View>(android.R.id.content) as? android.view.ViewGroup)
+            ?.getChildAt(0)?.let { it as? ScrollView }?.scrollY ?: 0
+        val view = SetupScreen.build(
+            this, state,
+            onStart = {
+                BlackoutService.instance?.arm() ?: startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            },
+            onAlarmFloor = { Blackout.setAlarmFloor(this, it) },
+            onLockedTest = { BlackoutService.instance?.lockAndBlack() },
+            onSideloadHelp = open(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg = true),
         )
+        setContentView(view)
+        view.post { (view as? ScrollView)?.scrollTo(0, scrollY) }
     }
 }

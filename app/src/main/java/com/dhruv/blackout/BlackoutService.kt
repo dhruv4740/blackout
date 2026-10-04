@@ -382,6 +382,13 @@ class BlackoutService : AccessibilityService() {
 
     private fun launchAuth(withPeek: Boolean = true) {
         if (withPeek) showPeek()
+        else {
+            // The cover pins the panel at brightness 0, which also hides the system prompt and the
+            // optical sensor's light. Lift it while the prompt is up, without drawing the peek.
+            setBrightness(0.15f)
+            handler.removeCallbacks(endPeek)
+            handler.postDelayed(endPeek, 12000)
+        }
         startActivity(Intent(this, AuthActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -396,12 +403,12 @@ class BlackoutService : AccessibilityService() {
             status == BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
             plugged -> "plugged in, not charging"
             else -> "on battery"
-        } + if (audioMode == AudioManager.MODE_IN_CALL) " Â· on a call" else ""
+        } + if (audioMode == AudioManager.MODE_IN_CALL) " · on a call" else ""
         val now = Date()
         tv.bind(
             SimpleDateFormat("HH:mm", Locale.getDefault()).format(now),
             SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(now),
-            "$level% Â· $state"
+            "$level% · $state"
         )
         val dm = resources.displayMetrics
         val lp = tv.layoutParams as FrameLayout.LayoutParams
