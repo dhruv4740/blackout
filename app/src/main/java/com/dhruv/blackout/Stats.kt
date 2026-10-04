@@ -98,6 +98,31 @@ object Stats {
         return rows
     }
 
+    /** Rows describing the most recent armed period, parsed from health.log. Empty if none logged. */
+    fun lastSession(c: Context): List<Pair<String, String>> {
+        val lines = runCatching { File(c.filesDir, "health.log").readLines() }.getOrDefault(emptyList())
+        val from = lines.indexOfLast { it.substring(minOf(15, it.length)).trim() == "armed" }
+        if (from < 0) return emptyList()
+        val s = lines.drop(from)
+        fun body(l: String) = l.substring(minOf(15, l.length)).trim()
+        val battery = Regex("""beat battery=(\d+)% plugged=(true|false)""")
+        val beats = s.mapNotNull { battery.find(body(it)) }
+        val rows = mutableListOf<Pair<String, String>>()
+        rows += "Started" to s.first().take(11)
+        if (beats.isNotEmpty()) {
+            rows += "Battery" to "${beats.first().groupValues[1]}% → ${beats.last().groupValues[1]}%"
+            rows += "Charger" to if (beats.all { it.groupValues[2] == "true" }) "stayed plugged in" else "was unplugged"
+        }
+        val unplugs = s.count { body(it) == "charger unplugged" }
+        if (unplugs > 0) rows += "Unplugged" to "$unplugs time${if (unplugs > 1) "s" else ""}"
+        rows += "Screen-offs" to "${s.count { body(it).startsWith("SCREEN_OFF") }}"
+        rows += "Cover re-raised" to "${s.count { body(it).startsWith("watchdog") }}"
+        val gaps = s.count { body(it).startsWith("gap:") }
+        if (gaps > 0) rows += "Gaps" to "$gaps"
+        s.lastOrNull { body(it).startsWith("disarmed") }?.let { rows += "Ended" to it.take(11) }
+        return rows
+    }
+
     fun health(c: Context, line: String) {
         runCatching {
             val f = File(c.filesDir, "health.log")

@@ -94,6 +94,10 @@ class MainActivity : AppCompatActivity() {
                 CheckRow(pm.isIgnoringBatteryOptimizations(packageName), "Battery optimization",
                     if (pm.isIgnoringBatteryOptimizations(packageName)) "Exempt" else "Exempt Blackout so it isn't stopped overnight",
                     open(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg = true)),
+                CheckRow(nm.areNotificationsEnabled(), "Notifications",
+                    if (nm.areNotificationsEnabled()) "Allowed" else "Allow so the unplug alert can sound") {
+                    requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+                },
                 CheckRow(am.ringerMode == AudioManager.RINGER_MODE_NORMAL, "Ringer", ringer),
                 CheckRow(nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL,
                     "Do Not Disturb",
@@ -102,10 +106,15 @@ class MainActivity : AppCompatActivity() {
             alarmFloor = Blackout.alarmFloor(this),
             alarmVolume = vol(AudioManager.STREAM_ALARM),
             ringVolume = vol(AudioManager.STREAM_RING),
-            stats = Stats.summary(this),
+            stats = Stats.summary(this).let { s ->
+                val fails = Blackout.failTotal(this)
+                if (s.isEmpty() && fails == 0) s else s + ("Failed unlocks" to "$fails")
+            },
+            lastSession = Stats.lastSession(this),
+            unplugAlert = Blackout.unplugAlert(this),
         )
         val key = listOf(state.armed, state.alarmFloor, state.alarmVolume, state.ringVolume, state.stats,
-            state.rows.map { it.ok to it.detail })
+            state.lastSession, state.unplugAlert, state.rows.map { it.ok to it.detail })
         if (key == lastKey) return
         lastKey = key
         val scrollY = (findViewById<android.view.View>(android.R.id.content) as? android.view.ViewGroup)
@@ -116,7 +125,7 @@ class MainActivity : AppCompatActivity() {
                 BlackoutService.instance?.arm() ?: startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             },
             onAlarmFloor = { Blackout.setAlarmFloor(this, it) },
-            onLockedTest = { BlackoutService.instance?.lockAndBlack() },
+            onUnplugAlert = { Blackout.setUnplugAlert(this, it) },
             onSideloadHelp = open(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg = true),
         )
         setContentView(view)

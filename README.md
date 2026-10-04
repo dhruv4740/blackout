@@ -2,7 +2,7 @@
 
 Personal, ad-free OLED black-screen app for a OnePlus 13R. No internet permission, no data collection.
 
-Status: **Phase 0 spike** - a minimal accessibility-service app that tests the design's risky assumptions on a real phone before features are built. Design and phases: see the approved plan (kept outside the repo).
+An accessibility-service cover that blacks out the screen while apps keep running, with biometric unlock, a quick tile, widget and shortcut, an alarm/call yield, an unplug alert and an in-app usage and last-session summary. Overnight use is manual-arm only.
 
 ## Build
 

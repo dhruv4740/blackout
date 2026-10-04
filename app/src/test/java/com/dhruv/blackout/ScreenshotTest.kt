@@ -26,7 +26,11 @@ class ScreenshotTest {
         alarmFloor = true, alarmVolume = "5/7", ringVolume = "4/7",
         stats = listOf(
             "Today" to "7 h 42 min", "Last 7 days" to "41 h 5 min", "All time" to "63 h 20 min", "Sessions" to "12",
-            "Longest" to "8 h 10 min", "Last session" to "Sun 23:10, 7 h 42 min",
+            "Longest" to "8 h 10 min", "Last session" to "Sun 23:10, 7 h 42 min", "Failed unlocks" to "0",
+        ),
+        lastSession = listOf(
+            "Started" to "10-03 23:10", "Battery" to "41% → 78%", "Charger" to "stayed plugged in",
+            "Screen-offs" to "0", "Cover re-raised" to "0", "Ended" to "10-04 06:52",
         ),
     )
 
@@ -46,11 +50,11 @@ class ScreenshotTest {
     @Test fun widget_on() { paparazzi.snapshot(widget(true)) }
 
     @Test fun setup() {
-        paparazzi.snapshot(SetupScreen.build(paparazzi.context, state(false, false), {}, {}, {}))
+        paparazzi.snapshot(SetupScreen.build(paparazzi.context, state(false, false), {}, {}))
     }
 
     @Test fun setup_armed() {
-        paparazzi.snapshot(SetupScreen.build(paparazzi.context, state(true, true), {}, {}, {}))
+        paparazzi.snapshot(SetupScreen.build(paparazzi.context, state(true, true), {}, {}))
     }
 
     @Test fun cover_peek() {

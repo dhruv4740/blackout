@@ -107,6 +107,8 @@ data class SetupState(
     val alarmVolume: String,
     val ringVolume: String,
     val stats: List<Pair<String, String>> = emptyList(),
+    val lastSession: List<Pair<String, String>> = emptyList(),
+    val unplugAlert: Boolean = true,
 )
 
 object SetupScreen {
@@ -115,7 +117,7 @@ object SetupScreen {
         s: SetupState,
         onStart: () -> Unit,
         onAlarmFloor: (Boolean) -> Unit,
-        onLockedTest: () -> Unit,
+        onUnplugAlert: (Boolean) -> Unit = {},
         onSideloadHelp: () -> Unit = {},
     ): View {
         fun text(t: String, sp: Float, color: Int, bold: Boolean = false) = TextView(ctx).apply {
@@ -175,27 +177,30 @@ object SetupScreen {
         }
         col.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ctx.dp(24) })
 
-        if (s.stats.isNotEmpty()) {
-            col.addView(text("USAGE", 12f, Palette.DIM, true).apply {
+        fun infoCard(title: String, rows: List<Pair<String, String>>) {
+            if (rows.isEmpty()) return
+            col.addView(text(title, 12f, Palette.DIM, true).apply {
                 letterSpacing = 0.12f
                 setPadding(ctx.dp(4), 0, 0, ctx.dp(8))
             })
-            val usage = LinearLayout(ctx).apply {
+            val card = LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(ctx.dp(16), ctx.dp(6), ctx.dp(16), ctx.dp(6))
                 background = ctx.rounded(Palette.CARD, 16, Palette.LINE)
             }
-            s.stats.forEach { (k, v) ->
+            rows.forEach { (k, v) ->
                 val row = LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL
                     setPadding(0, ctx.dp(8), 0, ctx.dp(8))
                 }
                 row.addView(text(k, 15f, Palette.DIM), LinearLayout.LayoutParams(0, -2, 1f))
                 row.addView(text(v, 15f, Palette.TEXT))
-                usage.addView(row)
+                card.addView(row)
             }
-            col.addView(usage, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ctx.dp(24) })
+            col.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ctx.dp(24) })
         }
+        infoCard("LAST SESSION", s.lastSession)
+        infoCard("USAGE", s.stats)
 
         col.addView(text("OPTIONS", 12f, Palette.DIM, true).apply {
             letterSpacing = 0.12f
@@ -216,6 +221,21 @@ object SetupScreen {
             setOnCheckedChangeListener { _, v -> onAlarmFloor(v) }
         })
         col.addView(opts, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ctx.dp(12) })
+        val unplug = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(ctx.dp(16), ctx.dp(14), ctx.dp(16), ctx.dp(14))
+            background = ctx.rounded(Palette.CARD, 16, Palette.LINE)
+        }
+        val utx = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        utx.addView(text("Charger unplugged alert", 16f, Palette.TEXT))
+        utx.addView(text("Sound and a notice if the cable comes out while on", 13f, Palette.DIM))
+        unplug.addView(utx, LinearLayout.LayoutParams(0, -2, 1f))
+        unplug.addView(Switch(ctx).apply {
+            isChecked = s.unplugAlert
+            setOnCheckedChangeListener { _, v -> onUnplugAlert(v) }
+        })
+        col.addView(unplug, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ctx.dp(12) })
         col.addView(
             text("Alarm volume ${s.alarmVolume}  ·  Ring volume ${s.ringVolume}", 13f, Palette.DIM)
                 .apply { setPadding(ctx.dp(4), 0, 0, ctx.dp(24)) }
@@ -223,10 +243,6 @@ object SetupScreen {
         col.addView(text("Toggle greyed out? App info, then Allow restricted settings.", 13f, Palette.DIM).apply {
             setPadding(ctx.dp(4), 0, 0, ctx.dp(8))
             setOnClickListener { onSideloadHelp() }
-        })
-        col.addView(text("Test Locked mode", 14f, Palette.DIM).apply {
-            setPadding(ctx.dp(4), ctx.dp(8), 0, ctx.dp(8))
-            setOnClickListener { onLockedTest() }
         })
 
         return ScrollView(ctx).apply {

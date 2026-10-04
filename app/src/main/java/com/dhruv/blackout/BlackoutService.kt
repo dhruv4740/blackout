@@ -2,6 +2,10 @@
 
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.service.quicksettings.TileService
@@ -74,6 +78,8 @@ class BlackoutService : AccessibilityService() {
                 Intent.ACTION_USER_PRESENT -> if (armed && revealed) disarm("keyguard unlocked after reveal")
                 // Power button off/on must not drop the cover; make sure it is still there.
                 Intent.ACTION_SCREEN_ON -> if (armed && !suspended && cover == null) showCover()
+                Intent.ACTION_POWER_DISCONNECTED -> if (armed && Blackout.unplugAlert(context)) onUnplugged()
+                Intent.ACTION_POWER_CONNECTED -> getSystemService(NotificationManager::class.java).cancel(NOTE_UNPLUG)
             }
         }
     }
@@ -139,6 +145,8 @@ class BlackoutService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(Intent.ACTION_POWER_CONNECTED)
         }
         ContextCompat.registerReceiver(this, screenReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         audio.registerAudioPlaybackCallback(playbackCallback, handler)
@@ -232,6 +240,7 @@ class BlackoutService : AccessibilityService() {
         Blackout.setArmed(this, false)
         Stats.end(this)
         Stats.health(this, "disarmed: $reason")
+        getSystemService(NotificationManager::class.java).cancel(NOTE_UNPLUG)
         handler.removeCallbacks(beat)
         refreshSurfaces()
         suspended = false
@@ -456,15 +465,27 @@ class BlackoutService : AccessibilityService() {
         }
     }
 
-    /** Locked-mode experiment (spike test 2): real lock, then a black showWhenLocked activity. */
-    fun lockAndBlack() {
-        val ok = performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
-        Log.i(TAG, "GLOBAL_ACTION_LOCK_SCREEN accepted=$ok")
-        handler.postDelayed({
-            runCatching {
-                startActivity(Intent(this, LockedActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }.onFailure { Log.e(TAG, "LockedActivity start failed", it) }
-        }, 800)
+    /** A loose cable overnight means a flat battery by morning: make noise and light the peek. */
+    private fun onUnplugged() {
+        Stats.health(this, "charger unplugged")
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALERT, "Charger alerts", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        )
+        nm.notify(
+            NOTE_UNPLUG,
+            Notification.Builder(this, CHANNEL_ALERT)
+                .setSmallIcon(R.drawable.ic_tile)
+                .setContentTitle("Charger unplugged")
+                .setContentText("Blackout is still on and the battery is draining.")
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build()
+        )
+        if (cover != null) showPeek()
     }
 
     private fun hideBars(c: WindowInsetsController) {
@@ -473,7 +494,9 @@ class BlackoutService : AccessibilityService() {
     }
 
     companion object {
-        const val TAG = "BlackoutSpike"
+        const val TAG = "Blackout"
+        private const val CHANNEL_ALERT = "alerts"
+        private const val NOTE_UNPLUG = 1
 
         @Volatile
         var instance: BlackoutService? = null

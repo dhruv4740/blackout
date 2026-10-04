@@ -16,7 +16,14 @@ object Blackout {
     fun savedAlarmVolume(c: Context) = p(c).getInt("savedAlarmVol", -1)
     fun setSavedAlarmVolume(c: Context, v: Int) = p(c).edit().putInt("savedAlarmVol", v).apply()
 
+    fun unplugAlert(c: Context) = p(c).getBoolean("unplugAlert", true)
+    fun setUnplugAlert(c: Context, v: Boolean) = p(c).edit().putBoolean("unplugAlert", v).apply()
+
+    /** Lifetime count of failed unlock attempts (never cleared). */
+    fun failTotal(c: Context) = p(c).getInt("failTotal", 0)
+
     fun logFailure(c: Context) {
+        p(c).edit().putInt("failTotal", failTotal(c) + 1).apply()
         val list = p(c).getString("failures", "").orEmpty()
         val trimmed = (list.split(",").filter { it.isNotEmpty() } + System.currentTimeMillis()).takeLast(50)
         p(c).edit().putString("failures", trimmed.joinToString(",")).apply()
