@@ -21,7 +21,10 @@ class AuthActivity : AppCompatActivity() {
             ContextCompat.getMainExecutor(this),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    BlackoutService.instance?.disarm("auth succeeded") ?: Blackout.setArmed(this@AuthActivity, false)
+                    BlackoutService.instance?.disarm("auth succeeded") ?: run {
+                        Blackout.setArmed(this@AuthActivity, false)
+                        Stats.end(this@AuthActivity)
+                    }
                     finish()
                 }
 

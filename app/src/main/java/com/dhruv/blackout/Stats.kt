@@ -25,9 +25,17 @@ object Stats {
 
     private fun append(c: Context, start: Long, end: Long) {
         if (end <= start) return
+        val total = closedTotal(c) + (end - start)
         val all = (sessions(c) + (start to end)).takeLast(MAX_SESSIONS)
-        p(c).edit().putString("sessions", all.joinToString(",") { "${it.first}-${it.second}" }).apply()
+        p(c).edit()
+            .putString("sessions", all.joinToString(",") { "${it.first}-${it.second}" })
+            .putLong("total", total)
+            .apply()
     }
+
+    /** Running total of closed sessions; the list is capped, so this is kept separately. */
+    private fun closedTotal(c: Context): Long =
+        if (p(c).contains("total")) p(c).getLong("total", 0L) else sessions(c).sumOf { it.second - it.first }
 
     /** Opens a session if none is open. */
     fun begin(c: Context, now: Long = System.currentTimeMillis()) {
@@ -72,13 +80,14 @@ object Stats {
 
     /** Label/value rows for the setup screen. */
     fun summary(c: Context, now: Long = System.currentTimeMillis()): List<Pair<String, String>> {
-        val open = p(c).getLong("start", 0L)
+        val open = if (Blackout.isArmed(c)) p(c).getLong("start", 0L) else 0L
         val all = sessions(c) + if (open != 0L) listOf(open to now) else emptyList()
         if (all.isEmpty()) return emptyList()
         val day = startOfDay(now)
         val rows = mutableListOf(
             "Today" to fmt(overlap(all, day, now)),
             "Last 7 days" to fmt(overlap(all, day - 6 * 86_400_000L, now)),
+            "All time" to fmt(closedTotal(c) + if (open != 0L) now - open else 0L),
             "Sessions" to "${all.size}",
             "Longest" to fmt(all.maxOf { it.second - it.first }),
         )
