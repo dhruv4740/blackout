@@ -23,7 +23,9 @@ class BlackoutTileService : TileService() {
 
     private fun refresh() {
         val t = qsTile ?: return
-        t.state = if (Blackout.isArmed(this)) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        val on = Blackout.isArmed(this)
+        t.state = if (on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        t.subtitle = if (on) "On · tap to unlock" else "Off"
         t.updateTile()
     }
 

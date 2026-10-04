@@ -47,6 +47,7 @@ class MainActivity : AppCompatActivity() {
             alarmFloor = Blackout.alarmFloor(this),
             alarmVolume = vol(AudioManager.STREAM_ALARM),
             ringVolume = vol(AudioManager.STREAM_RING),
+            stats = Stats.summary(this),
         )
         setContentView(
             SetupScreen.build(

@@ -3,6 +3,10 @@
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.service.quicksettings.TileService
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -62,6 +66,7 @@ class BlackoutService : AccessibilityService() {
         override fun onReceive(context: Context, intent: Intent) {
             val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
             Log.i(TAG, "${intent.action} deviceLocked=${km.isDeviceLocked} armed=$armed cover=${cover != null}")
+            if (armed) Stats.health(context, "${intent.action?.substringAfterLast('.')} locked=${km.isDeviceLocked} cover=${cover != null}")
             when (intent.action) {
                 // The system itself just authenticated the user: always exit.
                 // USER_PRESENT also fires when the keyguard is skipped (lock-delay, Smart Lock),
@@ -139,9 +144,42 @@ class BlackoutService : AccessibilityService() {
         audio.registerAudioPlaybackCallback(playbackCallback, handler)
         audio.addOnModeChangedListener(ContextCompat.getMainExecutor(this), modeListener)
         Log.i(TAG, "service connected, armed=$armed")
+        Stats.health(this, "service connected, armed=$armed")
         seedAudioState()
         // Watchdog: process death or rebind while armed puts the cover straight back.
-        if (armed) showCover()
+        if (armed) {
+            Stats.resume(this)
+            startBeat()
+            showCover()
+        }
+        refreshSurfaces()
+    }
+
+    /** Overnight health: a line every 5 min while armed, so the morning log shows the app stayed alive. */
+    private val beat = object : Runnable {
+        override fun run() {
+            if (!armed) return
+            Stats.beat(this@BlackoutService)
+            val bat = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = bat?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val plugged = (bat?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+            val on = (getSystemService(POWER_SERVICE) as android.os.PowerManager).isInteractive
+            Stats.health(
+                this@BlackoutService,
+                "beat battery=$level% plugged=$plugged screenOn=$on cover=${cover != null} suspended=$suspended"
+            )
+            handler.postDelayed(this, 5 * 60_000L)
+        }
+    }
+
+    private fun startBeat() {
+        handler.removeCallbacks(beat)
+        handler.post(beat)
+    }
+
+    private fun refreshSurfaces() {
+        TileService.requestListeningState(this, ComponentName(this, BlackoutTileService::class.java))
+        BlackoutWidget.refreshAll(this)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -172,6 +210,10 @@ class BlackoutService : AccessibilityService() {
         }
         if (armed && cover != null) return
         Blackout.setArmed(this, true)
+        Stats.begin(this)
+        Stats.health(this, "armed")
+        startBeat()
+        refreshSurfaces()
         suspended = false
         revealed = false
         seedAudioState()
@@ -188,6 +230,10 @@ class BlackoutService : AccessibilityService() {
     fun disarm(reason: String) {
         Log.i(TAG, "disarm: $reason")
         Blackout.setArmed(this, false)
+        Stats.end(this)
+        Stats.health(this, "disarmed: $reason")
+        handler.removeCallbacks(beat)
+        refreshSurfaces()
         suspended = false
         revealed = false
         handler.removeCallbacks(resumeCover)
@@ -243,7 +289,12 @@ class BlackoutService : AccessibilityService() {
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             isClickable = true
-            setOnClickListener { onCoverTapped() }
+            // Single tap: peek + prompt. Double tap: straight to the prompt, screen stays black.
+            val taps = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onCoverTapped(quick = false); return true }
+                override fun onDoubleTap(e: MotionEvent): Boolean { onCoverTapped(quick = true); return true }
+            })
+            setOnTouchListener { _, e -> taps.onTouchEvent(e); true }
         }
         peek = CoverUi.peekText(this).apply {
             unlock.setOnClickListener { launchAuth() }
@@ -285,6 +336,7 @@ class BlackoutService : AccessibilityService() {
                 // Watchdog: the system dropped the cover while we are armed and not yielding.
                 if (!removing && armed && !suspended && cover === v) {
                     Log.w(TAG, "cover detached unexpectedly, re-adding")
+                    Stats.health(this@BlackoutService, "watchdog: cover detached, re-adding")
                     cover = null
                     handler.post { if (armed && !suspended) showCover() }
                 }
@@ -311,7 +363,7 @@ class BlackoutService : AccessibilityService() {
         Log.i(TAG, "cover hidden")
     }
 
-    private fun onCoverTapped() {
+    private fun onCoverTapped(quick: Boolean) {
         // Guard against the tap that armed us (tile/widget) landing on the fresh cover.
         if (System.currentTimeMillis() - armedAt < 500) return
         val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
@@ -325,11 +377,11 @@ class BlackoutService : AccessibilityService() {
             handler.postDelayed(reraiseAfterReveal, 8000)
             return
         }
-        launchAuth()
+        launchAuth(withPeek = !quick)
     }
 
-    private fun launchAuth() {
-        showPeek()
+    private fun launchAuth(withPeek: Boolean = true) {
+        if (withPeek) showPeek()
         startActivity(Intent(this, AuthActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 

@@ -106,6 +106,7 @@ data class SetupState(
     val alarmFloor: Boolean,
     val alarmVolume: String,
     val ringVolume: String,
+    val stats: List<Pair<String, String>> = emptyList(),
 )
 
 object SetupScreen {
@@ -173,6 +174,28 @@ object SetupScreen {
             )
         }
         col.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ctx.dp(24) })
+
+        if (s.stats.isNotEmpty()) {
+            col.addView(text("USAGE", 12f, Palette.DIM, true).apply {
+                letterSpacing = 0.12f
+                setPadding(ctx.dp(4), 0, 0, ctx.dp(8))
+            })
+            val usage = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(ctx.dp(16), ctx.dp(6), ctx.dp(16), ctx.dp(6))
+                background = ctx.rounded(Palette.CARD, 16, Palette.LINE)
+            }
+            s.stats.forEach { (k, v) ->
+                val row = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(0, ctx.dp(8), 0, ctx.dp(8))
+                }
+                row.addView(text(k, 15f, Palette.DIM), LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(text(v, 15f, Palette.TEXT))
+                usage.addView(row)
+            }
+            col.addView(usage, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ctx.dp(24) })
+        }
 
         col.addView(text("OPTIONS", 12f, Palette.DIM, true).apply {
             letterSpacing = 0.12f
