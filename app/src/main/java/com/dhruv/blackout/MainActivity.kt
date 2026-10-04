@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 /** Setup + health checklist and manual start. The look lives in [SetupScreen]. */
 class MainActivity : AppCompatActivity() {
 
+    private var lastKey: Any? = null
     private val handler = Handler(Looper.getMainLooper())
     private val render = Runnable { render() }
 
@@ -103,6 +104,10 @@ class MainActivity : AppCompatActivity() {
             ringVolume = vol(AudioManager.STREAM_RING),
             stats = Stats.summary(this),
         )
+        val key = listOf(state.armed, state.alarmFloor, state.alarmVolume, state.ringVolume, state.stats,
+            state.rows.map { it.ok to it.detail })
+        if (key == lastKey) return
+        lastKey = key
         val scrollY = (findViewById<android.view.View>(android.R.id.content) as? android.view.ViewGroup)
             ?.getChildAt(0)?.let { it as? ScrollView }?.scrollY ?: 0
         val view = SetupScreen.build(
@@ -115,6 +120,13 @@ class MainActivity : AppCompatActivity() {
             onSideloadHelp = open(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg = true),
         )
         setContentView(view)
-        view.post { (view as? ScrollView)?.scrollTo(0, scrollY) }
+        // Restore scroll before the first frame so the top of the screen never flashes.
+        if (scrollY > 0) view.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                view.viewTreeObserver.removeOnPreDrawListener(this)
+                view.scrollTo(0, scrollY)
+                return false
+            }
+        })
     }
 }
