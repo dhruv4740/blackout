@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">Blackout</string>
     <string name="accessibility_description">Draws the black screen cover above all apps and can lock the screen. It does not read screen content.</string>
+    <string name="shortcut_label">Black screen</string>
+    <string name="tile_label">Blackout</string>
 </resources>

@@ -9,8 +9,8 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 
 /**
- * Phase 0 spike test 3: transparent host for BiometricPrompt. The cover is never touched
- * unless authentication succeeds, so cancelling the prompt leaves the cover up.
+ * Transparent host for BiometricPrompt. Success disarms Blackout; error or cancel leaves
+ * the cover untouched. Failed matches are logged for the next successful unlock.
  */
 class AuthActivity : AppCompatActivity() {
 
@@ -21,8 +21,7 @@ class AuthActivity : AppCompatActivity() {
             ContextCompat.getMainExecutor(this),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    Log.i(BlackoutService.TAG, "auth succeeded -> removing cover")
-                    BlackoutService.instance?.hideCover()
+                    BlackoutService.instance?.disarm("auth succeeded") ?: Blackout.setArmed(this@AuthActivity, false)
                     finish()
                 }
 
@@ -32,7 +31,7 @@ class AuthActivity : AppCompatActivity() {
                 }
 
                 override fun onAuthenticationFailed() {
-                    Log.i(BlackoutService.TAG, "auth attempt failed (not a match)")
+                    Blackout.logFailure(this@AuthActivity)
                 }
             }
         )
@@ -40,7 +39,6 @@ class AuthActivity : AppCompatActivity() {
             .setTitle("Unlock")
             .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
             .build()
-        Log.i(BlackoutService.TAG, "showing BiometricPrompt")
         prompt.authenticate(info)
     }
 }

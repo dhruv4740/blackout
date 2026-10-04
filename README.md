@@ -15,3 +15,8 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`. Needs JDK 17+ and the Android 
 ## Install note
 
 A sideloaded APK needs Settings > Apps > Blackout > menu > "Allow restricted settings" before the Accessibility service can be switched on.
+
+## Escape hatch
+
+The cover has no timeout. If it ever sticks and the fingerprint fails, from a PC: `adb shell settings put secure enabled_accessibility_services ""` (turns the service off, removing the cover).
+

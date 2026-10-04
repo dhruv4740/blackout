@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="blackout"
+        android:enabled="true"
+        android:icon="@android:drawable/ic_lock_power_off"
+        android:shortcutShortLabel="@string/shortcut_label">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.dhruv.blackout.ToggleActivity"
+            android:targetPackage="com.dhruv.blackout" />
+    </shortcut>
+</shortcuts>
