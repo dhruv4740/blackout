@@ -10,14 +10,13 @@ import android.widget.Toast
 class ToggleActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val s = BlackoutService.instance
         when {
-            s == null -> {
+            Blackout.isArmed(this) && BlackoutService.instance != null ->
+                startActivity(Intent(this, AuthActivity::class.java))
+            !Blackout.requestArm(this) -> {
                 Toast.makeText(this, "Turn on the Blackout accessibility service first", Toast.LENGTH_LONG).show()
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
-            Blackout.isArmed(this) -> startActivity(Intent(this, AuthActivity::class.java))
-            else -> s.arm()
         }
         finish()
     }

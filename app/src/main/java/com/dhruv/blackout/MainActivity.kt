@@ -86,8 +86,12 @@ class MainActivity : AppCompatActivity() {
         val state = SetupState(
             armed = Blackout.isArmed(this),
             rows = listOf(
-                CheckRow(BlackoutService.instance != null, "Accessibility service",
-                    if (BlackoutService.instance != null) "Connected" else "Turn Blackout on in Accessibility",
+                CheckRow(BlackoutService.instance != null || Blackout.canManageService(this), "Accessibility service",
+                    when {
+                        Blackout.canManageService(this) -> "Automatic: on only while Blackout is on"
+                        BlackoutService.instance != null -> "Connected"
+                        else -> "Turn Blackout on in Accessibility"
+                    },
                     open(Settings.ACTION_ACCESSIBILITY_SETTINGS)),
                 CheckRow(km.isDeviceSecure, "Screen lock",
                     if (km.isDeviceSecure) "Set" else "Set a PIN or fingerprint first"),
@@ -122,7 +126,7 @@ class MainActivity : AppCompatActivity() {
         val view = SetupScreen.build(
             this, state,
             onStart = {
-                BlackoutService.instance?.arm() ?: startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                if (!Blackout.requestArm(this)) startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             },
             onAlarmFloor = { Blackout.setAlarmFloor(this, it) },
             onUnplugAlert = { Blackout.setUnplugAlert(this, it) },

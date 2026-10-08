@@ -12,11 +12,9 @@ class BlackoutTileService : TileService() {
     override fun onStartListening() = refresh()
 
     override fun onClick() {
-        val s = BlackoutService.instance
         when {
-            s == null -> launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            Blackout.isArmed(this) -> launch(Intent(this, AuthActivity::class.java))
-            else -> s.arm(dismissShade = true)
+            Blackout.isArmed(this) && BlackoutService.instance != null -> launch(Intent(this, AuthActivity::class.java))
+            !Blackout.requestArm(this, dismissShade = true) -> launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         refresh()
     }

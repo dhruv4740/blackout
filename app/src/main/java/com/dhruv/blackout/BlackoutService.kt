@@ -161,6 +161,7 @@ class BlackoutService : AccessibilityService() {
             showCover()
         }
         refreshSurfaces()
+        Blackout.takePendingArm(this)?.let { arm(it) }
     }
 
     /** Overnight health: a line every 5 min while armed, so the morning log shows the app stayed alive. */
@@ -254,6 +255,8 @@ class BlackoutService : AccessibilityService() {
         if (failed > 0) {
             Toast.makeText(this, "$failed failed unlock attempt(s) while Blackout was on", Toast.LENGTH_LONG).show()
         }
+        // Leave no accessibility service enabled while idle (banking apps object to it).
+        if (Blackout.canManageService(this)) disableSelf()
     }
 
     /**

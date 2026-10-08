@@ -16,6 +16,43 @@ object Blackout {
     fun savedAlarmVolume(c: Context) = p(c).getInt("savedAlarmVol", -1)
     fun setSavedAlarmVolume(c: Context, v: Int) = p(c).edit().putInt("savedAlarmVol", v).apply()
 
+    /**
+     * With WRITE_SECURE_SETTINGS (granted once over adb) the accessibility service is switched on
+     * only while armed, so banking apps that refuse to run beside an enabled service work otherwise.
+     */
+    fun canManageService(c: Context) =
+        c.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    private fun setPending(c: Context, shade: Boolean?) =
+        p(c).edit().apply { if (shade == null) remove("pendingShade") else putBoolean("pendingShade", shade) }.apply()
+
+    /** Consumes a queued arm request: null if none, else whether to dismiss the shade. */
+    fun takePendingArm(c: Context): Boolean? {
+        if (!p(c).contains("pendingShade")) return null
+        val v = p(c).getBoolean("pendingShade", false)
+        setPending(c, null)
+        return v
+    }
+
+    /** Arms now if the service is up; otherwise queues the arm and switches the service on. */
+    fun requestArm(c: Context, dismissShade: Boolean = false): Boolean {
+        BlackoutService.instance?.let { it.arm(dismissShade); return true }
+        if (!canManageService(c)) return false
+        val cn = android.content.ComponentName(c, BlackoutService::class.java).flattenToString()
+        val cr = c.contentResolver
+        val cur = android.provider.Settings.Secure.getString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+        setPending(c, dismissShade)
+        if (cur.split(":").none { it == cn }) {
+            android.provider.Settings.Secure.putString(
+                cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                if (cur.isEmpty()) cn else "$cur:$cn"
+            )
+        }
+        android.provider.Settings.Secure.putInt(cr, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+        return true
+    }
+
     fun unplugAlert(c: Context) = p(c).getBoolean("unplugAlert", true)
     fun setUnplugAlert(c: Context, v: Boolean) = p(c).edit().putBoolean("unplugAlert", v).apply()
 
