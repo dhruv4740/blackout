@@ -24,15 +24,24 @@ object Blackout {
         c.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
 
-    private fun setPending(c: Context, shade: Boolean?) =
-        p(c).edit().apply { if (shade == null) remove("pendingShade") else putBoolean("pendingShade", shade) }.apply()
+    private const val PENDING_TTL_MS = 30_000L
 
-    /** Consumes a queued arm request: null if none, else whether to dismiss the shade. */
+    private fun setPending(c: Context, shade: Boolean?) =
+        p(c).edit().apply {
+            if (shade == null) remove("pendingShade").remove("pendingAt")
+            else putBoolean("pendingShade", shade).putLong("pendingAt", System.currentTimeMillis())
+        }.apply()
+
+    /**
+     * Consumes a queued arm request: null if none or stale, else whether to dismiss the shade.
+     * The expiry stops a request that never connected from arming on some later, unrelated connect.
+     */
     fun takePendingArm(c: Context): Boolean? {
         if (!p(c).contains("pendingShade")) return null
         val v = p(c).getBoolean("pendingShade", false)
+        val fresh = System.currentTimeMillis() - p(c).getLong("pendingAt", 0L) < PENDING_TTL_MS
         setPending(c, null)
-        return v
+        return if (fresh) v else null
     }
 
     /** Arms now if the service is up; otherwise queues the arm and switches the service on. */

@@ -191,11 +191,9 @@ class BlackoutService : AccessibilityService() {
         BlackoutWidget.refreshAll(this)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            Log.i(TAG, "window pkg=${event.packageName} cls=${event.className}")
-        }
-    }
+    // Events are not used: the service exists only to own the overlay window, so no foreground-app
+    // names are read or logged.
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {}
 
